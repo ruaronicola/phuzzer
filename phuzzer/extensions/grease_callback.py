@@ -32,14 +32,14 @@ class GreaseCallback(object):
                 continue
             with open(a) as sf:
                 seed_content = sf.read()
-            smap = Showmap(fuzz.binary_path, seed_content)
+            smap = Showmap(fuzz.target, seed_content)
             shownmap = smap.showmap()
             for k in shownmap:
                 #print(shownmap[k], (ord(bitmap[k % len(bitmap)]) ^ 0xff))
                 if shownmap[k] > (ord(bitmap[k % len(bitmap)]) ^ 0xff):
                     l.warning("Found interesting, syncing to tests")
 
-                    fuzzer_out_dir = fuzz.out_dir
+                    fuzzer_out_dir = fuzz.work_dir
                     grease_dir = os.path.join(fuzzer_out_dir, "grease")
                     grease_queue_dir = os.path.join(grease_dir, "queue")
                     try:

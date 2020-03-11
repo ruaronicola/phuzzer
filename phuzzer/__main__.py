@@ -11,6 +11,7 @@ import argparse
 import importlib
 import logging.config
 
+from .timer import InfiniteTimer
 from . import AFL
 from . import GreaseCallback
 
@@ -33,7 +34,7 @@ def main():
     parser.add_argument('--logcfg', help="The logging configuration file.", default=".shellphuzz.ini")
     parser.add_argument('-s', '--seed-dir', action="append", help="Directory of files to seed fuzzer with")
     parser.add_argument('--run-timeout', help="Number of milliseconds permitted for each run of binary", type=int, default=None)
-    parser.add_argument('--driller-timeout', help="Number of seconds to allow driller to run", type=int, default=10*60)
+    parser.add_argument('--driller-timeout', help="Number of seconds to allow driller to run", type=int, default=99999*60)
     parser.add_argument('--length-extension', help="Try extending inputs to driller by this many bytes", type=int)
     args = parser.parse_args()
 
@@ -89,9 +90,15 @@ def main():
         memory=args.memory, run_timeout=args.run_timeout,
     )
 
+    if args.force_interval:
+        def _timer_callback():
+            stuck_callback(fuzzer)
+        _timer = InfiniteTimer(args.force_interval, _timer_callback)
+
     # start it!
     print ("[*] Starting fuzzer...")
     fuzzer.start()
+    if args.force_interval: _timer.start()
     start_time = time.time()
     if args.ipython:
         print ("[!]")
@@ -141,7 +148,7 @@ def main():
             shutil.rmtree(p)
         except (OSError, IOError):
             pass
-        shutil.copytree(fuzzer.out_dir, p)
+        shutil.copytree(fuzzer.work_dir, p)
 
         tar_name = args.tarball.replace("{}", socket.gethostname())
 
@@ -167,7 +174,7 @@ def build_status_str(elapsed_time, first_crash, timeout, afl_cores, fuzzer):
 
     summary_stats = fuzzer.summary_stats
 
-    return "[*] %d fuzzers running %s%scompleted %d execs at %d execs/sec with %d crashes)." % \
+    return "[*] %.0f fuzzers running %s%scompleted %.0f execs at %.0f execs/sec with %.0f crashes)." % \
            (afl_cores, run_until_str, timeout_str, summary_stats["execs_done"], summary_stats["execs_per_sec"],
             summary_stats["unique_crashes"])
 

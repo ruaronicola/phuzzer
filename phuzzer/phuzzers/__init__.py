@@ -200,5 +200,4 @@ class Phuzzer:
         self.stop()
 
 from ..errors import InstallError
-from .afl import AFL
-from .afl_multicb import AFLMultiCB
+from .afl_plusplus import AFL

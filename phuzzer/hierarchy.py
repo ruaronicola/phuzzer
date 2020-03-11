@@ -182,7 +182,7 @@ class Input(object):
         with open('/dev/null', 'w') as tf, open(self.filepath) as sf:
             cmd_args = [
                 'timeout', '60', shellphish_qemu.qemu_path('cgc-tracer'),
-                self.hierarchy._fuzzer.binary_path
+                self.hierarchy._fuzzer.target
             ]
             process = subprocess.Popen(cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=tf)
             fuck, _ = process.communicate(sf.read())
@@ -199,7 +199,7 @@ class Input(object):
                 'timeout', '2',
                 shellphish_qemu.qemu_path('cgc-tracer'),
                 '-d', 'exec',
-                self.hierarchy._fuzzer.binary_path
+                self.hierarchy._fuzzer.target
             ]
             #print("cat %s | %s" % (self.filepath, ' '.join(cmd_args)))
             process = subprocess.Popen(cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
