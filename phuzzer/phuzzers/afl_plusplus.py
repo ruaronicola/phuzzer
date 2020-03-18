@@ -78,7 +78,7 @@ class AFL(Phuzzer):
                 ["-L", "10"],   # MOpt(imize) mode
                 ["-c", "0"],     # CMPLOG mode
             ])
-        self.power_schedule = itertools.cycle(['explore', 'fast', 'coe', 'quad', 'lin', 'exploit'])
+        self.power_schedule = itertools.cycle(['fast', 'explore', 'coe', 'mmopt'])
 
         self.target_os = None
         self.target_arch = None
@@ -437,53 +437,49 @@ class AFL(Phuzzer):
         afl_path_var = shellphish_afl.afl_path_var(p.arch.qemu_name)
         
         directory = None
-        if p.arch.qemu_name == "aarch64":
-            directory = "arm64"
         if p.arch.qemu_name == "i386":
             directory = "i386"
+            qemu_base = 0x40000000
         if p.arch.qemu_name == "x86_64":
             directory = "x86_64"
-        if p.arch.qemu_name == "arm":
-            # some stuff qira uses to determine the which libs to use for arm
-            with open(self.target, "rb") as f:
-                progdata = f.read(0x800)
-            if "/lib/ld-linux.so.3" in progdata:
-                directory = "armel"
-            elif "/lib/ld-linux-armhf.so.3" in progdata:
-                directory = "armhf"
+            qemu_base = 0x4000000000
 
         if directory is None:
             l.warning("architecture \"%s\" has no installed libraries", p.arch.qemu_name)
-        else:
+        elif False:  # for now, avoid mixing up libs
             libpath = os.path.join(afl_dir, "..", "fuzzer-libs", directory)
 
-            l.debug("exporting QEMU_LD_PREFIX of '%s'", libpath)
+            l.debug("exporting QEMU_LD_PREFIX=%s", libpath)
             os.environ['QEMU_LD_PREFIX'] = libpath
 
-        l.debug("exporting AFL_PATH of '%s'", afl_path_var)
+        l.debug("exporting AFL_PATH=%s", afl_path_var)
         os.environ['AFL_PATH'] = afl_path_var
 
-        l.debug("exporting AFL_COMPCOV_LEVEL of 2")
+        libcompcovpath = os.path.join(afl_dir, "libcompcov.so")
+        libdislocatorpath = os.path.join(afl_dir, "libdislocator.so")
+        afl_preload = " ".join([libcompcovpath, libdislocatorpath])
+        afl_preload = f"'{afl_preload}'"
+        l.debug("exporting AFL_PRELOAD=%s", afl_preload)
+        os.environ['AFL_PRELOAD'] = afl_preload
+
+        l.debug("exporting AFL_COMPCOV_LEVEL=2")
         os.environ['AFL_COMPCOV_LEVEL'] = "2"  # CompareCoverage instrumentation
 
-        if not p.loader.main_object.pic:  # TODO
-            main = p.loader.find_symbol('main')
-            if main:  # fuzz persistently main function
-                #l.debug("exporting AFL_QEMU_PERSISTENT_ADDR of %s", hex(main.rebased_addr))
-                #os.environ['AFL_QEMU_PERSISTENT_ADDR'] = hex(main.rebased_addr)
-                #os.environ['AFL_QEMU_PERSISTENT_GPR'] = "1"
-                l.debug("exporting AFL_ENTRYPOINT of %s", hex(main.rebased_addr))
-                os.environ['AFL_ENTRYPOINT'] = hex(main.rebased_addr)
-            else:  # use a better entry point
-                l.debug("exporting AFL_ENTRYPOINT of %s", hex(p.entry))
-                os.environ['AFL_ENTRYPOINT'] = hex(p.entry)
+        # set entrypoint
+        main = p.loader.find_symbol('main')
+        entrypoint = main.rebased_addr if main else p.entry
 
-        #l.debug("exporting AFL_INST_LIBS of 1")
-        #os.environ['AFL_INST_LIBS'] = "1"
+        #l.debug("exporting QEMU_SET_ENV=%s", f"QEMU_GUEST_BASE={hex(qemu_base)}")
+        #os.environ['QEMU_SET_ENV'] = f"QEMU_GUEST_BASE={hex(qemu_base)}"
+        #if p.loader.main_object.pic: entrypoint += qemu_base
 
-        libdislocatorpath = os.path.join(afl_dir, "libdislocator.so")
-        os.environ['AFL_PRELOAD'] = libdislocatorpath
+        if not p.loader.main_object.pic:
+            #l.debug("exporting AFL_QEMU_PERSISTENT_ADDR=%s", hex(entrypoint))
+            #os.environ['AFL_QEMU_PERSISTENT_ADDR'] = hex(entrypoint)
+            #os.environ['AFL_QEMU_PERSISTENT_GPR'] = "1"
 
+            l.debug("exporting AFL_ENTRYPOINT=%s", hex(entrypoint))
+            os.environ['AFL_ENTRYPOINT'] = hex(entrypoint)
 
         # return the AFL path
         return shellphish_afl.afl_bin(self.target_os)

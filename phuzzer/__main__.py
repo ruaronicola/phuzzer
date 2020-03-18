@@ -4,6 +4,7 @@ import os
 import imp
 import time
 import shutil
+import signal
 import socket
 import driller
 import tarfile
@@ -123,6 +124,9 @@ def main():
                 crash_seen = True
                 if args.first_crash:
                     break
+            if "PROGRAM ABORT" in open(f"{fuzzer.work_dir}/fuzzer-master.log").read():
+                print ("\n[*] Fuzzer aborted.")
+                break
             if fuzzer.timed_out():
                 print ("\n[*] Timeout reached.")
                 break
@@ -157,6 +161,9 @@ def main():
         tar.close()
         print ("[*] Copying out result tarball to %s" % tar_name)
         shutil.move("/tmp/afl_sync.tar.gz", tar_name)
+
+    os.killpg(os.getpid(), signal.SIGTERM) # send signal to the process group
+    
 
 
 def build_status_str(elapsed_time, first_crash, timeout, afl_cores, fuzzer):
