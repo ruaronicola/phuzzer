@@ -32,6 +32,7 @@ def main():
                         help="A module that includes some helper scripts for seed selection and such.")
     parser.add_argument('--memory', help="Memory limit to pass to AFL (MB, or use k, M, G, T suffixes)", default="8G")
     parser.add_argument('--no-dictionary', help="Do not create a dictionary before fuzzing.", action='store_true', default=False)
+    parser.add_argument('--dictionary', help="Path to custom dictionary.")
     parser.add_argument('--logcfg', help="The logging configuration file.", default=".shellphuzz.ini")
     parser.add_argument('-s', '--seed-dir', action="append", help="Directory of files to seed fuzzer with")
     parser.add_argument('--run-timeout', help="Number of milliseconds permitted for each run of binary", type=int, default=None)
@@ -84,10 +85,17 @@ def main():
                 with open(filepath, 'rb') as seedfile:
                     seeds.append(seedfile.read())
 
+    dictionary = None
+    if args.dictionary:
+        print (f"[*] Reading custom dictionary from file {args.dictionary}...")
+        with open(args.dictionary, 'rb') as f:
+            dictionary = f.read().splitlines()
+
     print ("[*] Creating fuzzer...")
     fuzzer = AFL(
         args.binary, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
-        create_dictionary=not args.no_dictionary, timeout=args.timeout,
+        create_dictionary=not (args.no_dictionary or args.dictionary), 
+        dictionary=dictionary, timeout=args.timeout,
         memory=args.memory, run_timeout=args.run_timeout,
     )
 
