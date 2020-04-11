@@ -19,6 +19,7 @@ from . import GreaseCallback
 def main():
     parser = argparse.ArgumentParser(description="Shellphish fuzzer interface")
     parser.add_argument('binary', help="the path to the target binary to fuzz")
+    parser.add_argument('-o','--opts', nargs='+', help="Command line options", required=False)
     parser.add_argument('-g', '--grease-with', help="A directory of inputs to grease the fuzzer with when it gets stuck.")
     parser.add_argument('-d', '--driller_workers', help="When the fuzzer gets stuck, drill with N workers.", type=int)
     parser.add_argument('-f', '--force_interval', help="Force greaser/fuzzer assistance at a regular interval (in seconds).", type=float)
@@ -93,7 +94,7 @@ def main():
 
     print ("[*] Creating fuzzer...")
     fuzzer = AFL(
-        args.binary, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
+        args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
         create_dictionary=not (args.no_dictionary or args.dictionary), 
         dictionary=dictionary, timeout=args.timeout,
         memory=args.memory, run_timeout=args.run_timeout,
