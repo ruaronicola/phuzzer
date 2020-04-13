@@ -16,6 +16,8 @@ from .timer import InfiniteTimer
 from . import AFL
 from . import GreaseCallback
 
+from driller.prioritization_techniques import UniqueSearch, HardestSearch, SyMLSearch
+
 def main():
     parser = argparse.ArgumentParser(description="Shellphish fuzzer interface")
     parser.add_argument('binary', help="the path to the target binary to fuzz")
@@ -33,6 +35,7 @@ def main():
                         help="A module that includes some helper scripts for seed selection and such.")
     parser.add_argument('--memory', help="Memory limit to pass to AFL (MB, or use k, M, G, T suffixes)", default="8G")
     parser.add_argument('-r', '--resume', help="Resume fuzzers, if possible.", action='store_true', default=False)
+    parser.add_argument('--technique', help="Prioritization technique for driller exploration.", default="unique")
     parser.add_argument('--classifier', help="Classifier for SyML exploration.")
     parser.add_argument('--no-dictionary', help="Do not create a dictionary before fuzzing.", action='store_true', default=False)
     parser.add_argument('--dictionary', help="Path to custom dictionary.")
@@ -69,7 +72,8 @@ def main():
         )
     if args.driller_workers:
         print ("[*] Drilling...")
-        drill_extension = driller.LocalCallback(num_workers=args.driller_workers, worker_timeout=args.driller_timeout, length_extension=args.length_extension)
+        technique = {"unique":UniqueSearch, "hard":HardestSearch, "syml":SyMLSearch}[args.technique]
+        drill_extension = driller.LocalCallback(num_workers=args.driller_workers, worker_timeout=args.driller_timeout, length_extension=args.length_extension, technique=technique)
 
     stuck_callback = (
         (lambda f: (grease_extension(f), drill_extension(f))) if drill_extension and grease_extension
