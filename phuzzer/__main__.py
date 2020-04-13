@@ -32,6 +32,8 @@ def main():
     parser.add_argument('-m', '--helper-module',
                         help="A module that includes some helper scripts for seed selection and such.")
     parser.add_argument('--memory', help="Memory limit to pass to AFL (MB, or use k, M, G, T suffixes)", default="8G")
+    parser.add_argument('-r', '--resume', help="Resume fuzzers, if possible.", action='store_true', default=False)
+    parser.add_argument('--classifier', help="Classifier for SyML exploration.")
     parser.add_argument('--no-dictionary', help="Do not create a dictionary before fuzzing.", action='store_true', default=False)
     parser.add_argument('--dictionary', help="Path to custom dictionary.")
     parser.add_argument('--logcfg', help="The logging configuration file.", default=".shellphuzz.ini")
@@ -73,6 +75,9 @@ def main():
         (lambda f: (grease_extension(f), drill_extension(f))) if drill_extension and grease_extension
         else drill_extension or grease_extension
     )
+    
+    if args.classifier:
+        os.system(f"cp {args.classifier} {args.work_dir}/driller/classifier.pkl")
 
     seeds = None
     if args.seed_dir:
@@ -97,7 +102,7 @@ def main():
         args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
         create_dictionary=not (args.no_dictionary or args.dictionary), 
         dictionary=dictionary, timeout=args.timeout,
-        memory=args.memory, run_timeout=args.run_timeout,
+        memory=args.memory, run_timeout=args.run_timeout, resume=args.resume
     )
 
     if args.force_interval:
