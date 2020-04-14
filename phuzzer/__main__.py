@@ -88,9 +88,8 @@ def main():
 
     seeds = None
     if args.seed_dir:
-        seeds = []
         print ("[*] Seeding...")
-        seeds = [open(s, 'rb').read() for s in glob(f"{args.seed_dir}/**/*", recursive=True) if os.path.isfile(s)]
+        seeds = [open(s, 'rb').read() for dir in args.seed_dir for s in glob(f"{dir}/**/*", recursive=True) if os.path.isfile(s)]
 
     dictionary = None
     if args.dictionary:
@@ -99,49 +98,51 @@ def main():
             dictionary = f.read().splitlines()
 
     print ("[*] Creating fuzzer...")
-    fuzzer = AFL(
+    fuzzer = [AFL(
         args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
         create_dictionary=not (args.no_dictionary or args.dictionary), dictionary=dictionary, 
         timeout=args.timeout, memory=args.memory, run_timeout=args.run_timeout, resume=args.resume
-    )
+    )]
     
     
     ### STUCK CALLBACK ###
     def _stuck_callback():
-        stuck_callback(fuzzer)
+        stuck_callback(fuzzer[0])
     _timer = InfiniteTimer(args.force_interval, _stuck_callback)
 
     
     ### AFL-CMIN CALLBACK ###
     def cmin_callback(fuzzer):
-        if fuzzer.summary_stats['cycles_done'] >= 2:
+        if fuzzer[0].summary_stats['cycles_done'] >= 2 and not drill_extension.t.updating:
             print ("[*] Calling afl-cmin...")
             # kill fuzzer
-            fuzzer.stop()
+            fuzzer[0].stop()
             # suspend drill_extension
             if args.driller_workers: drill_extension.suspend = True
             # cmin to queue.cmin
-            fuzzer.cmin().wait()
+            fuzzer[0].cmin(fuzzer_prefix="").wait()
             # restart fuzzer
             print ("[*] Re-starting fuzzer...")
-            seeds = [open(s, 'rb').read() for s in glob(f"{fuzzer.queue_min_dir}/**/*", recursive=True) if os.path.isfile(s)]
-            fuzzer = AFL(
+            seeds = [open(s, 'rb').read() for s in glob(f"{fuzzer[0].queue_min_dir}/**/*", recursive=True) if os.path.isfile(s)]
+            fuzzer[0] = AFL(
                 args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
                 create_dictionary=not (args.no_dictionary or args.dictionary),  dictionary=dictionary, 
                 timeout=args.timeout, memory=args.memory, run_timeout=args.run_timeout, resume=False
             )
-            fuzzer.start()
+            fuzzer[0].start()
             # unsuspend drill_extension
-            if args.driller_workers: drill_extension.suspend = False
-    # todo: this does not really work 
+            if args.driller_workers: 
+                drill_extension.suspend = False
+                os.makedirs(f"{fuzzer[0].work_dir}/driller/queue")
     def _cmin_callback():
         cmin_callback(fuzzer)
-    #InfiniteTimer(120, _cmin_callback).start()
+    # there's a high risk of re-drilling seeds if this is active
+    if not args.driller_workers: InfiniteTimer(60, _cmin_callback).start()
     
     
     # start it!
     print ("[*] Starting fuzzer...")
-    fuzzer.start()
+    fuzzer[0].start()
     if args.force_interval: _timer.start()
     start_time = time.time()
     if args.ipython:
@@ -167,7 +168,7 @@ def main():
         if "PROGRAM ABORT" in open(f"{fuzzer.work_dir}/fuzzer-master.log").read(): abort_program = True
         if fuzzer.timed_out(): abort_tmout = True
     def _status_callback():
-        try: status_callback(fuzzer)
+        try: status_callback(fuzzer[0])
         except: pass
     InfiniteTimer(1, _status_callback).start()
     
@@ -190,13 +191,13 @@ def main():
         print ("\n[*] Aborting wait. Ctrl-C again for KeyboardInterrupt.")
     except Exception as e:
         print ("\n[*] Unknown exception received (%s). Terminating fuzzer." % e)
-        fuzzer.stop()
+        fuzzer[0].stop()
         if drill_extension:
             drill_extension.kill()
         raise
 
     print ("[*] Terminating fuzzer.")
-    fuzzer.stop()
+    fuzzer[0].stop()
     if drill_extension:
         drill_extension.kill()
 
@@ -207,7 +208,7 @@ def main():
             shutil.rmtree(p)
         except (OSError, IOError):
             pass
-        shutil.copytree(fuzzer.work_dir, p)
+        shutil.copytree(fuzzer[0].work_dir, p)
 
         tar_name = args.tarball.replace("{}", socket.gethostname())
 
