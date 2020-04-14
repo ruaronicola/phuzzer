@@ -384,7 +384,7 @@ class AFL(Phuzzer):
 
             pollen_cnt += 1
             
-    def cmin(self):
+    def cmin(self, fuzzer_prefix="fuzzer-"):
         afl_dir = shellphish_afl.afl_dir(self.target_os)
         afl_path_var = shellphish_afl.afl_path_var(self.target_arch)
         os.environ['AFL_PATH'] = afl_path_var
@@ -395,7 +395,7 @@ class AFL(Phuzzer):
         os.makedirs(self.queue_all_dir)
         
         # copy all seeds
-        for seed in glob(f"{self.work_dir}/*/queue/*"):
+        for seed in glob(f"{self.work_dir}/{fuzzer_prefix}*/queue/*"):
             id = seed.split("/")[-1]
             fuzzer = seed.split("/queue")[0].split("/")[-1]
             shutil.copy(seed, f"{self.queue_all_dir}/{{{fuzzer}}}{id}")
@@ -428,6 +428,16 @@ class AFL(Phuzzer):
 
         args = [self.afl_path]
 
+        if len(self.processes) == 0:
+            fuzzer_id = "fuzzer-master"
+            args += ["-M", fuzzer_id]
+        else:
+            fuzzer_id = "fuzzer-%d" % len(self.processes)
+            args += ["-S", fuzzer_id]
+
+        if not os.path.exists(f"{self.work_dir}/{fuzzer_id}/queue"):
+            self.in_dir = os.path.join(self.work_dir, "initial_seeds")
+
         args += ["-i", self.in_dir]
         args += ["-o", self.work_dir]
         args += ["-m", self.memory]
@@ -439,13 +449,6 @@ class AFL(Phuzzer):
 
         if self.crash_mode:
             args += ["-C"]
-
-        if len(self.processes) == 0:
-            fuzzer_id = "fuzzer-master"
-            args += ["-M", fuzzer_id]
-        else:
-            fuzzer_id = "fuzzer-%d" % len(self.processes)
-            args += ["-S", fuzzer_id]
 
         if os.path.exists(self.dictionary_file):
             args += ["-x", self.dictionary_file]
