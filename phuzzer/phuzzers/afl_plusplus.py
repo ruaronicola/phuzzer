@@ -2,6 +2,7 @@ from . import Phuzzer
 from ..util import hexescape
 from ..errors import InstallError
 from collections import defaultdict
+from glob import glob
 import shellphish_afl
 import subprocess
 import contextlib
@@ -80,6 +81,7 @@ class AFL(Phuzzer):
             ])
         self.power_schedule = itertools.cycle(['fast', 'explore', 'coe', 'mmopt'])
 
+        self.target_name = os.path.basename(self.target)
         self.target_os = None
         self.target_arch = None
 
@@ -91,6 +93,11 @@ class AFL(Phuzzer):
 
         # set up the paths
         self.afl_path = self.choose_afl()
+        
+        # queue.all and cmin dirs 
+        self.queue_all_dir = os.path.join(self.work_dir, 'queue.all')
+        self.queue_min_dir = f"/data/afl/queue.cmin/{self.target_name}"
+        
 
     #
     # Overrides
@@ -376,6 +383,42 @@ class AFL(Phuzzer):
                 f.write(tcase)
 
             pollen_cnt += 1
+            
+    def cmin(self):
+        afl_dir = shellphish_afl.afl_dir(self.target_os)
+        afl_path_var = shellphish_afl.afl_path_var(self.target_arch)
+        os.environ['AFL_PATH'] = afl_path_var
+        
+        # create queue.all dir
+        if os.path.exists(self.queue_all_dir):
+            shutil.rmtree(self.queue_all_dir)
+        os.makedirs(self.queue_all_dir)
+        
+        # copy all seeds
+        for seed in glob(f"{self.work_dir}/*/queue/*"):
+            id = seed.split("/")[-1]
+            fuzzer = seed.split("/queue")[0].split("/")[-1]
+            shutil.copy(seed, f"{self.queue_all_dir}/{{{fuzzer}}}{id}")
+        
+        # create queue.cmin
+        if os.path.exists(self.queue_min_dir):
+            shutil.rmtree(self.queue_min_dir)
+        os.makedirs(self.queue_min_dir)
+        
+        # create cmd args
+        cmin_path = os.path.join(afl_dir, "afl-cmin")
+        args = [cmin_path]
+        
+        args += ["-i", self.queue_all_dir]
+        args += ["-o", self.queue_min_dir]
+        args += ["-m", self.memory]
+        args += ["-Q"]
+        args += ["--"]
+        args += [self.target]
+        
+        #l.debug(f"execing: AFL_PATH={afl_path_var} {' '.join(args)}")
+        return subprocess.Popen(args, env=os.environ, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        
 
     #
     # AFL launchers
@@ -422,7 +465,7 @@ class AFL(Phuzzer):
         l.debug("execing: %s > %s", ' '.join(args), logpath)
         with open(logpath, "w") as fp:
             return subprocess.Popen(args, stdout=fp, stderr=fp, close_fds=True)
-
+        
     def choose_afl(self):
         """
         Chooses the right AFL and sets up some environment.

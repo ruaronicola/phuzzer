@@ -12,6 +12,8 @@ import argparse
 import importlib
 import logging.config
 
+from glob import glob
+
 from .timer import InfiniteTimer
 from . import AFL
 from . import GreaseCallback
@@ -73,7 +75,8 @@ def main():
     if args.driller_workers:
         print ("[*] Drilling...")
         technique = {"unique":UniqueSearch, "hard":HardestSearch, "syml":SyMLSearch}[args.technique]
-        drill_extension = driller.LocalCallback(num_workers=args.driller_workers, worker_timeout=args.driller_timeout, length_extension=args.length_extension, technique=technique)
+        drill_extension = driller.LocalCallback(num_workers=args.driller_workers, worker_timeout=args.driller_timeout, 
+                                                length_extension=args.length_extension, technique=technique)
 
     stuck_callback = (
         (lambda f: (grease_extension(f), drill_extension(f))) if drill_extension and grease_extension
@@ -87,13 +90,7 @@ def main():
     if args.seed_dir:
         seeds = []
         print ("[*] Seeding...")
-        for dirpath in args.seed_dir:
-            for filename in os.listdir(dirpath):
-                filepath = os.path.join(dirpath, filename)
-                if not os.path.isfile(filepath):
-                    continue
-                with open(filepath, 'rb') as seedfile:
-                    seeds.append(seedfile.read())
+        seeds = [open(s, 'rb').read() for s in glob(f"{args.seed_dir}/**/*", recursive=True) if os.path.isfile(s)]
 
     dictionary = None
     if args.dictionary:
@@ -104,16 +101,44 @@ def main():
     print ("[*] Creating fuzzer...")
     fuzzer = AFL(
         args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
-        create_dictionary=not (args.no_dictionary or args.dictionary), 
-        dictionary=dictionary, timeout=args.timeout,
-        memory=args.memory, run_timeout=args.run_timeout, resume=args.resume
+        create_dictionary=not (args.no_dictionary or args.dictionary), dictionary=dictionary, 
+        timeout=args.timeout, memory=args.memory, run_timeout=args.run_timeout, resume=args.resume
     )
+    
+    
+    ### STUCK CALLBACK ###
+    def _stuck_callback():
+        stuck_callback(fuzzer)
+    _timer = InfiniteTimer(args.force_interval, _stuck_callback)
 
-    if args.force_interval:
-        def _timer_callback():
-            stuck_callback(fuzzer)
-        _timer = InfiniteTimer(args.force_interval, _timer_callback)
-
+    
+    ### AFL-CMIN CALLBACK ###
+    def cmin_callback(fuzzer):
+        if fuzzer.summary_stats['cycles_done'] >= 2:
+            print ("[*] Calling afl-cmin...")
+            # kill fuzzer
+            fuzzer.stop()
+            # suspend drill_extension
+            if args.driller_workers: drill_extension.suspend = True
+            # cmin to queue.cmin
+            fuzzer.cmin().wait()
+            # restart fuzzer
+            print ("[*] Re-starting fuzzer...")
+            seeds = [open(s, 'rb').read() for s in glob(f"{fuzzer.queue_min_dir}/**/*", recursive=True) if os.path.isfile(s)]
+            fuzzer = AFL(
+                args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
+                create_dictionary=not (args.no_dictionary or args.dictionary),  dictionary=dictionary, 
+                timeout=args.timeout, memory=args.memory, run_timeout=args.run_timeout, resume=False
+            )
+            fuzzer.start()
+            # unsuspend drill_extension
+            if args.driller_workers: drill_extension.suspend = False
+    # todo: this does not really work 
+    def _cmin_callback():
+        cmin_callback(fuzzer)
+    #InfiniteTimer(120, _cmin_callback).start()
+    
+    
     # start it!
     print ("[*] Starting fuzzer...")
     fuzzer.start()
@@ -128,24 +153,36 @@ def main():
         print ("[!] grease_extension")
         print ("[!]")
         import IPython; IPython.embed()
-
+    
+    
+    ### STATUS CALLBACK ###
+    abort_crash = False
+    abort_program = False
+    abort_tmout = False
+    def status_callback(fuzzer):
+        elapsed_time = time.time() - start_time
+        status_str = build_status_str(elapsed_time, args.first_crash, args.timeout, args.afl_cores, fuzzer)
+        print(status_str, end="\r")
+        if args.first_crash and fuzzer.found_crash(): abort_crash = True
+        if "PROGRAM ABORT" in open(f"{fuzzer.work_dir}/fuzzer-master.log").read(): abort_program = True
+        if fuzzer.timed_out(): abort_tmout = True
+    def _status_callback():
+        try: status_callback(fuzzer)
+        except: pass
+    InfiniteTimer(1, _status_callback).start()
+    
+    
     try:
         #print ("[*] Waiting for fuzzer completion (timeout: %s, first_crash: %s)." % (args.timeout, args.first_crash))
-        crash_seen = False
         while True:
-            elapsed_time = time.time() - start_time
-            status_str = build_status_str(elapsed_time, args.first_crash, args.timeout, args.afl_cores, fuzzer)
-            print(status_str, end="\r")
             time.sleep(1)
-            if not crash_seen and fuzzer.found_crash():
-                #print ("\n[*] Crash found!")
-                crash_seen = True
-                if args.first_crash:
-                    break
-            if "PROGRAM ABORT" in open(f"{fuzzer.work_dir}/fuzzer-master.log").read():
+            if abort_crash:
+                print ("\n[*] Crash found.")
+                break
+            if abort_program:
                 print ("\n[*] Fuzzer aborted.")
                 break
-            if fuzzer.timed_out():
+            if abort_tmout:
                 print ("\n[*] Timeout reached.")
                 break
 
