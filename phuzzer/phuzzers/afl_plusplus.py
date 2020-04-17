@@ -415,6 +415,7 @@ class AFL(Phuzzer):
         args += ["-Q"]
         args += ["--"]
         args += [self.target]
+        args += self.target_opts
         
         #l.debug(f"execing: AFL_PATH={afl_path_var} {' '.join(args)}")
         return subprocess.Popen(args, env=os.environ, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
