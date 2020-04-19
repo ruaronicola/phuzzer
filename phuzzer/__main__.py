@@ -123,7 +123,8 @@ def main():
             fuzzer[0].cmin(fuzzer_prefix="").wait()
             # restart fuzzer
             print ("[*] Re-starting fuzzer...")
-            seeds = [open(s, 'rb').read() for s in glob(f"{fuzzer[0].queue_min_dir}/**/*", recursive=True) if os.path.isfile(s)]
+            # todo: copy over queue.cmin to each fuzzer's queue, recompute timeout and start again
+            seeds = [open(s, 'rb').read() for s in glob(f"{fuzzer[0].queue_min_dir}/*id:*") if os.path.isfile(s)]
             fuzzer[0] = AFL(
                 args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
                 create_dictionary=not (args.no_dictionary or args.dictionary),  dictionary=dictionary, 

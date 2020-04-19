@@ -395,7 +395,7 @@ class AFL(Phuzzer):
         os.makedirs(self.queue_all_dir)
         
         # copy all seeds
-        for seed in glob(f"{self.work_dir}/{fuzzer_prefix}*/queue/*"):
+        for seed in glob(f"{self.work_dir}/{fuzzer_prefix}*/queue/id:*"):
             id = seed.split("/")[-1]
             fuzzer = seed.split("/queue")[0].split("/")[-1]
             shutil.copy(seed, f"{self.queue_all_dir}/{{{fuzzer}}}{id}")
