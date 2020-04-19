@@ -74,6 +74,7 @@ def main():
         )
     if args.driller_workers:
         print ("[*] Drilling...")
+        print (f"[*] Using technique {args.technique}")
         technique = {"unique":UniqueSearch, "hard":HardestSearch, "syml":SyMLSearch}[args.technique]
         drill_extension = driller.LocalCallback(num_workers=args.driller_workers, worker_timeout=args.driller_timeout, 
                                                 length_extension=args.length_extension, technique=technique)
@@ -82,9 +83,6 @@ def main():
         (lambda f: (grease_extension(f), drill_extension(f))) if drill_extension and grease_extension
         else drill_extension or grease_extension
     )
-    
-    if args.classifier:
-        os.system(f"cp {args.classifier} {args.work_dir}/driller/classifier.pkl")
 
     seeds = None
     if args.seed_dir:
@@ -144,6 +142,12 @@ def main():
     # start it!
     print ("[*] Starting fuzzer...")
     fuzzer[0].start()
+
+    if args.classifier:
+        os.system(f"mkdir -p {args.work_dir}/driller/")
+        os.system(f"cp {args.classifier} {args.work_dir}/driller/classifier.pkl")
+        print (f"[*] Using classifier {args.classifier}")
+
     if args.force_interval: _timer.start()
     start_time = time.time()
     if args.ipython:
