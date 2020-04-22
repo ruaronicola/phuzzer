@@ -101,6 +101,35 @@ def main():
     def _stuck_callback():
         stuck_callback(status['fuzzer'])
     _timer = InfiniteTimer(args.force_interval, _stuck_callback)
+
+    ### AFL-CMIN CALLBACK ###
+    def cmin_callback(fuzzer):
+        if status['fuzzer'].summary_stats['cycles_done'] >= 2 and not drill_extension.t.updating:
+            print ("[*] Calling afl-cmin...")
+            # kill fuzzer
+            status['fuzzer'].stop()
+            # suspend drill_extension
+            if args.driller_workers: drill_extension.suspend = True
+            # cmin to queue.cmin
+            status['fuzzer'].cmin(fuzzer_prefix="").wait()
+            # restart fuzzer
+            print ("[*] Re-starting fuzzer...")
+            # todo: copy over queue.cmin to each fuzzer's queue, recompute timeout and start again
+            seeds = [open(s, 'rb').read() for s in glob(f"{status['fuzzer'].queue_min_dir}/*id:*") if os.path.isfile(s)]
+            status['fuzzer'] = AFL(
+                args.binary, target_opts=args.opts, work_dir=args.work_dir, seeds=seeds, afl_count=args.afl_cores,
+                create_dictionary=not args.no_dictionary, dictionary=dictionary, 
+                timeout=args.timeout, memory=args.memory, run_timeout=args.run_timeout, resume=False
+            )
+            status['fuzzer'].start()
+            # unsuspend drill_extension
+            if args.driller_workers: 
+                drill_extension.suspend = False
+                os.makedirs(f"{status['fuzzer'].work_dir}/driller/queue")
+    def _cmin_callback():
+        cmin_callback(fuzzer)
+    # there's a high risk of re-drilling seeds if this is active
+    if not args.driller_workers: InfiniteTimer(60, _cmin_callback).start()
     
     # start it!
     print("[*] Starting fuzzer...")
