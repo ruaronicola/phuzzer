@@ -24,6 +24,9 @@ class Phuzzer:
 
         self.target = target
         self.seeds = seeds or [ ]
+        
+        self.proj = None
+        self.cfg = None
 
         # processes spun up
         self.processes            = [ ]
@@ -142,12 +145,14 @@ class Phuzzer:
     def create_dictionary(self):
         l.warning("creating a dictionary of string references within target \"%s\"", self.target)
 
-        b = angr.Project(self.target, load_options={'auto_load_libs': False})
-        cfg = b.analyses.CFG(resolve_indirect_jumps=True, collect_data_references=True)
-        state = b.factory.blank_state()
+        self.proj = angr.Project(self.target, auto_load_libs=False)
+        self.cfg = self.proj.analyses.CFG(fail_fast=True, normalize=True, 
+                                          objects=[self.proj.loader.main_object], 
+                                          resolve_indirect_jumps=True, collect_data_references=True)
+        state = self.proj.factory.blank_state()
 
         string_references = []
-        for v in cfg._memory_data.values():
+        for v in self.cfg._memory_data.values():
             if v.sort == "string" and v.size > 1:
                 st = state.solver.eval(state.memory.load(v.address, v.size), cast_to=bytes)
                 string_references.append((v.address, st))

@@ -460,7 +460,7 @@ class AFL(Phuzzer):
             args += ["-t", "%d+" % self.run_timeout]
         args += ["--"]
         args += [self.target]
-        args += self.target_opts
+        args += [o.strip(' ') for o in self.target_opts]
 
         with open(os.path.join(self.work_dir, fuzzer_id+".cmd"), "w") as cf:
             cf.write(" ".join(args) + "\n")
@@ -476,23 +476,23 @@ class AFL(Phuzzer):
         """
 
         # set up the AFL path
-        p = angr.Project(self.target)
-        self.target_os = p.loader.main_object.os
-        self.target_arch = p.arch.qemu_name
+        self.proj = self.proj or angr.Project(self.target, auto_load_libs=False)
+        self.target_os = self.proj.loader.main_object.os
+        self.target_arch = self.proj.arch.qemu_name
 
         afl_dir = shellphish_afl.afl_dir(self.target_os)
-        afl_path_var = shellphish_afl.afl_path_var(p.arch.qemu_name)
+        afl_path_var = shellphish_afl.afl_path_var(self.target_arch)
         
         directory = None
-        if p.arch.qemu_name == "i386":
+        if self.target_arch == "i386":
             directory = "i386"
             qemu_base = 0x40000000
-        if p.arch.qemu_name == "x86_64":
+        if self.target_arch == "x86_64":
             directory = "x86_64"
             qemu_base = 0x4000000000
 
         if directory is None:
-            l.warning("architecture \"%s\" has no installed libraries", p.arch.qemu_name)
+            l.warning("architecture \"%s\" has no installed libraries", self.target_arch)
         elif False:  # for now, avoid mixing up libs
             libpath = os.path.join(afl_dir, "..", "fuzzer-libs", directory)
 
@@ -513,20 +513,23 @@ class AFL(Phuzzer):
         os.environ['AFL_COMPCOV_LEVEL'] = "2"  # CompareCoverage instrumentation
 
         # set entrypoint
-        main = p.loader.find_symbol('main')
-        entrypoint = main.rebased_addr if main else p.entry
+        main = self.proj.loader.find_symbol('main')
+        entrypoint = main.rebased_addr if main else self.proj.entry
+        
+        if self.proj.loader.main_object.pic:
+            entrypoint = self.proj.loader.main_object.addr_to_offset(entrypoint)
+            entrypoint += qemu_base
 
         #l.debug("exporting QEMU_SET_ENV=%s", f"QEMU_GUEST_BASE={hex(qemu_base)}")
-        #os.environ['QEMU_SET_ENV'] = f"QEMU_GUEST_BASE={hex(qemu_base)}"
-        #if p.loader.main_object.pic: entrypoint += qemu_base
-
-        if not p.loader.main_object.pic:
-            #l.debug("exporting AFL_QEMU_PERSISTENT_ADDR=%s", hex(entrypoint))
-            #os.environ['AFL_QEMU_PERSISTENT_ADDR'] = hex(entrypoint)
-            #os.environ['AFL_QEMU_PERSISTENT_GPR'] = "1"
-
-            l.debug("exporting AFL_ENTRYPOINT=%s", hex(entrypoint))
-            os.environ['AFL_ENTRYPOINT'] = hex(entrypoint)
+        os.environ['QEMU_SET_ENV'] = f"QEMU_GUEST_BASE={hex(qemu_base)}"
+        
+        l.debug("exporting AFL_ENTRYPOINT=%s", hex(entrypoint))
+        os.environ['AFL_ENTRYPOINT'] = hex(entrypoint)
+        
+        #if not self.proj.loader.main_object.pic:
+        #l.debug("exporting AFL_QEMU_PERSISTENT_ADDR=%s", hex(entrypoint))
+        #os.environ['AFL_QEMU_PERSISTENT_ADDR'] = hex(entrypoint)
+        #os.environ['AFL_QEMU_PERSISTENT_GPR'] = "1"
 
         # return the AFL path
         return shellphish_afl.afl_bin(self.target_os)
