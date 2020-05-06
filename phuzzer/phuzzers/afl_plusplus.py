@@ -76,7 +76,7 @@ class AFL(Phuzzer):
 
         self.mutator = itertools.cycle([
                 ["-R"],         # radamsa mutator
-                ["-L", "10"],   # MOpt(imize) mode
+                ["-L", "-1"],   # MOpt(imize) mode
                 ["-c", "0"],     # CMPLOG mode
             ])
         self.power_schedule = itertools.cycle(['fast', 'explore', 'coe', 'mmopt'])
