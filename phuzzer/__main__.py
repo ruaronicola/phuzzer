@@ -67,8 +67,8 @@ def main():
     dictionary = None
     if args.dictionary:
         print(f"[*] Reading custom dictionary from file {args.dictionary}...")
-        with open(args.dictionary, 'rb') as f:
-            dictionary = f.read().splitlines()
+        with open("jpeg.dict", "r", encoding='unicode_escape') as f:
+            dictionary = f.read().encode('raw_unicode_escape').splitlines()
 
     print("[*] Creating fuzzer...")
     status['fuzzer'] = AFL(
